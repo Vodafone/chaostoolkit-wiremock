@@ -16,8 +16,9 @@ def server_running(configuration: Configuration = None) -> int:
     if not check_configuration(configuration):
         logger.error("Configuration error")
         return None
+
+    params = get_wm_params(configuration)
     try:
-        params = get_wm_params(configuration)
         Wiremock(url=params['url'], timeout=params['timeout'])
         return 1
     except ConnectionError:

@@ -25,13 +25,14 @@ def get_wm_params(c: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     url = ""
 
     if host and port:
-        url = "http://{}:{}{}".format(host, port, context_path)
+        url = "https://{}:{}{}".format(host, port, context_path)
+    else:
+        url = wm_conf.get("url", None)
 
     if not url:
         logger.error("No configuration params to set WM server url")
         return None
-
-    return {"url": url, "timeout": timeout}
+    return {"url": url, "port": port, "timeout": timeout}
 
 
 def check_configuration(c: Dict[str, Any] = None) -> bool:
