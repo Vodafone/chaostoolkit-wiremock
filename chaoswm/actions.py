@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import Any, List, Mapping, TypedDict
+from typing import Any, Dict, List, Mapping
 
 from chaoslib.types import Configuration
 from logzero import logger
@@ -24,11 +24,6 @@ __all__ = [
     "reset",
     "reset_mappings",
 ]
-
-
-class FilterOpts(TypedDict):
-    strict: bool
-    limit: int
 
 
 def add_mappings(
@@ -61,7 +56,7 @@ def populate_from_dir(
 
 def delete_mappings(
     filter: List[Any],
-    filter_opts: FilterOpts = None,
+    filter_opts: Dict[str, Any] = None,
     configuration: Configuration = None,
 ) -> List[Any]:
     """deletes a list of mappings
@@ -105,7 +100,7 @@ def update_mappings_status_code_and_body(
     status_code: str,
     body: str = None,
     body_file_name: str = None,
-    filter_opts: FilterOpts = None,
+    filter_opts: Dict[str, Any] = None,
     configuration: Configuration = None,
 ) -> List[Any]:
     """changes all Wiremock mappings responses to the set status_code and body.
@@ -145,7 +140,7 @@ def update_mappings_status_code_and_body(
 def update_mappings_fault(
     filter: List[Mapping],
     fault: str,
-    filter_opts: FilterOpts = None,
+    filter_opts: Dict[str, Any] = None,
     configuration: Configuration = None,
 ) -> List[Any]:
     """updates wiremock fault configuration for selected mappings.
@@ -225,7 +220,7 @@ def global_random_delay(
 def fixed_delay(
     filter: List[Any],
     fixedDelayMilliseconds: int,
-    filter_opts: FilterOpts = None,
+    filter_opts: Dict[str, Any] = None,
     configuration: Configuration = None,
 ) -> List[Any]:
     """adds a fixed delay to a list of mappings"""

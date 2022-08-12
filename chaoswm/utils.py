@@ -32,6 +32,7 @@ def get_wm_params(c: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not url:
         logger.error("No configuration params to set WM server url")
         return None
+
     return {"url": url, "timeout": timeout}
 
 

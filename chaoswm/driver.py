@@ -99,7 +99,8 @@ class Wiremock:
         count = 0
         for mapping in mappings:
             if strict:
-                matches = self.strict_filter(mapping, _filter)
+                node = mapping.get("request")
+                matches = self.strict_filter(node, _filter)
             else:
                 matches = self.recursive_filter(mapping, _filter)
 
@@ -383,7 +384,7 @@ class Wiremock:
             return 1
 
     def chunked_dribble_delay(
-        self, filter: List[Any], chunkedDribbleDelay: Mapping[str, Any] = None
+        self, _filter: List[Any], chunkedDribbleDelay: Mapping[str, Any] = None
     ):
         """
         Adds a delay to the passed mapping
@@ -406,7 +407,7 @@ class Wiremock:
             )
             return None
 
-        mapping_found = self.mapping_by_request_exact_match(filter)
+        mapping_found = self.mapping_by_request_exact_match(_filter)
 
         if not mapping_found:
             logger.error("[chunked_dribble_delay]: Error retrieving mapping")
