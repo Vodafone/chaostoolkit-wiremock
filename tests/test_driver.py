@@ -135,6 +135,34 @@ class TestWiremock(unittest.TestCase):
         self.assertTrue(isinstance(mapping, dict))
         self.assertEqual(mapping["id"], id)
 
+    def test_filter_mappings_strict(self):
+        w = Wiremock(host="localhost", port=8080)
+        w.delete_all_mappings()
+        id = w.add_mapping(
+            {
+                "request": {
+                    "method": "POST",
+                    "url": "/create/some/thing",
+                    "headers": {"Accept": {"contains": "xml"}},
+                    "bodyPatterns": [
+                        {"equalToXml": "<search-results />"},
+                        {"matchesXPath": "//search-results"},
+                    ],
+                },
+                "response": {
+                    "status": 201,
+                    "body": "Created!",
+                    "headers": {"Content-Type": "text/plain"},
+                },
+            }
+        )
+
+        matched_mappings = w.filter_mappings(
+            {"url": "/create/some/thing", "method": "POST"}
+        )
+        self.assertEqual(len(matched_mappings), 1)
+        self.assertEqual(id, matched_mappings[0]["id"])
+
     def test_filter_mappings_non_strict(self):
         w = Wiremock(host="localhost", port=8080)
         w.delete_all_mappings()

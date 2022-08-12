@@ -99,11 +99,9 @@ class Wiremock:
         count = 0
         for mapping in mappings:
             if strict:
-                print("strict")
                 node = mapping.get("request")
                 matches = self.strict_filter(node, _filter)
             else:
-                print("recursive")
                 matches = self.recursive_filter(mapping, _filter)
 
             if matches:
