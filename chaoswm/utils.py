@@ -8,7 +8,7 @@ __all__ = ["can_connect_to", "get_wm_params", "check_configuration"]
 
 
 def can_connect_to(host: str, port: int) -> bool:
-    """ Test a connection to a host/port """
+    """Test a connection to a host/port"""
 
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
         return bool(sock.connect_ex((host, port)) == 0)
@@ -32,7 +32,7 @@ def get_wm_params(c: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not url:
         logger.error("No configuration params to set WM server url")
         return None
-    return {"url": url, "port": port, "timeout": timeout}
+    return {"url": url, "timeout": timeout}
 
 
 def check_configuration(c: Dict[str, Any] = None) -> bool:
