@@ -25,7 +25,7 @@ def get_wm_params(c: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     url = ""
 
     if host and port:
-        url = "https://{}:{}{}".format(host, port, context_path)
+        url = "http://{}:{}{}".format(host, port, context_path)
     else:
         url = wm_conf.get("url", None)
 

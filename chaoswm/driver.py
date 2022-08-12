@@ -18,25 +18,39 @@ import requests
 
 from .utils import can_connect_to
 
-AVAILABLE_FAULTS = ["EMPTY_RESPONSE", "MALFORMED_RESPONSE_CHUNK", "RANDOM_DATA_THEN_CLOSE", "CONNECTION_RESET_BY_PEER"]
+AVAILABLE_FAULTS = [
+    "EMPTY_RESPONSE",
+    "MALFORMED_RESPONSE_CHUNK",
+    "RANDOM_DATA_THEN_CLOSE",
+    "CONNECTION_RESET_BY_PEER",
+]
 
 
 class ConnectionError(Exception):
     pass
 
 
-class Wiremock():
-    def __init__(self, host: str = None, port: str = None, url: str = None, timeout: int = 1):
+class Wiremock:
+    def __init__(
+        self,
+        host: str = None,
+        port: str = None,
+        url: str = None,
+        timeout: int = 1,
+    ):
 
         if host and port:
-            url = "https://{}:{}".format(host, port)
-        self.base_url = "{}/__admin".format(url)
-        self.mappings_url = "{}/{}".format(self.base_url, "mappings")
-        self.settings_url = "{}/{}".format(self.base_url, "settings")
-        self.reset_url = "{}/{}".format(self.base_url, "reset")
-        self.reset_mappings_url = "{}/{}".format(self.mappings_url, "reset")
+            url = f"http://{host}:{port}"
+        self.base_url = f"{url}/__admin"
+        self.mappings_url = f"{self.base_url}/mappings"
+        self.settings_url = f"{self.base_url}/settings"
+        self.reset_url = f"{self.base_url}/reset"
+        self.reset_mappings_url = f"{self.mappings_url}/reset"
         self.timeout = timeout
-        self.headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        self.headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
 
         if (host and port) and can_connect_to(host, port) is False:
             raise ConnectionError("Wiremock server not found")
@@ -46,81 +60,92 @@ class Wiremock():
         retrieves all mappings
         returns the array of mappings found
         """
-        r = requests.get(self.mappings_url, headers=self.headers, timeout=self.timeout)
+        r = requests.get(
+            self.mappings_url, headers=self.headers, timeout=self.timeout
+        )
         if r.status_code != 200:
-            logger.error("[mappings]:Error retrieving mappings: {}".format(r.text()))
+            logger.error(
+                "[mappings]:Error retrieving mappings: {}".format(r.text())
+            )
             return []
         else:
             res = r.json()
             return res["mappings"]
 
     def mapping_by_id(self, id=int) -> Dict[str, Any]:
-        r = requests.get("{}/{}".format(self.mappings_url, id), headers=self.headers, timeout=self.timeout)
+        r = requests.get(
+            "{}/{}".format(self.mappings_url, id),
+            headers=self.headers,
+            timeout=self.timeout,
+        )
         if r.status_code != 200:
-            logger.error("[mapping_by_id]:Error retrieving mapping: {}".format(r.text()))
+            logger.error(
+                "[mapping_by_id]:Error retrieving mapping: {}".format(r.text())
+            )
             return -1
         else:
             return r.json()
 
-    def mapping_by_url_and_method(self, url: str, method: str) -> Dict[str, Any]:
-        mappings = self.mappings()
-        for mapping in mappings:
-            if (mapping["request"]["url"] == url) and (mapping["request"]["method"] == method):
-                return mapping
-        return {}
+    def filter_mapping(self, _filter: Mapping, strict: bool = True) -> Mapping:
+        matching_mappings = self.filter_mappings(_filter, strict, limit=1)
+        return matching_mappings[1] if len(matching_mappings) > 0 else None
 
-    def mapping_by_request(self, request: Mapping[str, Any] = None) -> Dict[str, Any]:
-        num_filter_keys = len(request.keys())
+    def filter_mappings(
+        self, _filter: Mapping, strict: bool = True, limit: int = 0
+    ) -> List[Mapping]:
         mappings = self.mappings()
-        for mapping in mappings:
-            count = 0
-            inter = mapping["request"].keys() & request.keys()
-            if len(inter) != num_filter_keys:
-                continue
-            for k in request.keys():
-                if mapping["request"][k] == request[k]:
-                    count += 1
-            if count == num_filter_keys:
-                return mapping
-        return None
 
-    def mappings_by_request(self, request: Mapping[str, Any] = None) -> List[Dict[str, Any]]:
-        num_filter_keys = len(request.keys())
-        mappings = self.mappings()
         matching_mappings = []
+        count = 0
         for mapping in mappings:
-            count = 0
-            inter = mapping["request"].keys() & request.keys()
-            if len(inter) != num_filter_keys:
-                continue
-            for k in request.keys():
-                if mapping["request"][k] == request[k]:
-                    count += 1
-            if count == num_filter_keys:
+            if strict:
+                matches = self.strict_filter(mapping, _filter)
+            else:
+                matches = self.recursive_filter(mapping, _filter)
+
+            if matches:
                 matching_mappings.append(mapping)
+                count += 1
+
+            if limit > 0 and count >= limit:
+                break
+
         return matching_mappings
 
-    def mappings_by_metadata(self, metadata_filter: Mapping[str, Any] = None) -> List[Dict[str, Any]]:
-        num_filter_keys = len(metadata_filter.keys())
-        mappings = self.mappings()
-        matching_mappings = []
-        for mapping in mappings:
-            if "metadata" not in mapping:
-                continue
+    def strict_filter(self, node: Mapping, _filter: Mapping) -> bool:
+        intersec = node.keys() & _filter.keys()
+        if len(intersec) != len(_filter.keys()):
+            return False
+        for key in _filter.keys():
+            f = _filter[key]
+            comp = node.get(key)
+            if f != comp:
+                return False
+        return True
 
-            count = 0
-            metadata = mapping["metadata"]
-            inter = metadata.keys() & metadata_filter.keys()
-            if len(inter) != num_filter_keys:
-                continue
-            for k in inter:
-                if metadata[k] == metadata_filter[k]:
-                    count += 1
-            if count == num_filter_keys:
-                matching_mappings.append(mapping)
-        return matching_mappings
+    def recursive_filter(
+        self, node: Mapping, _filter: Mapping, depth: int = 0
+    ) -> bool:
+        intersec = node.keys() & _filter.keys()
+        if len(intersec) != len(_filter.keys()):
+            return False
+        for key in _filter.keys():
+            f = _filter[key]
+            comp = node.get(key)
+            if isinstance(f, Mapping):
+                if not self.recursive_filter(comp, f, depth=depth + 1):
+                    return False
+            elif isinstance(f, List):
+                if comp not in f:
+                    return False
+            elif f != comp:
+                return False
 
-    def mapping_by_request_exact_match(self, request: Mapping[str, Any] = None) -> Dict[str, Any]:
+        return True
+
+    def mapping_by_request_exact_match(
+        self, request: Mapping[str, Any] = None
+    ) -> Dict[str, Any]:
         mappings = self.mappings()
         for mapping in mappings:
             if mapping["request"] == request:
@@ -152,7 +177,9 @@ class Wiremock():
         or None in case of errors
         """
         if not os.path.exists(dir):
-            logger.error("[populate_from_dir]: directory {} does not exists".format(dir))
+            logger.error(
+                "[populate_from_dir]: directory {} does not exists".format(dir)
+            )
             return None
 
         ids = []
@@ -165,7 +192,9 @@ class Wiremock():
                     ids.append(id)
         return ids
 
-    def update_fault(self, mappings: Mapping[str, Any], fault: str) -> Optional[List[Any]]:
+    def update_fault(
+        self, mappings: Mapping[str, Any], fault: str
+    ) -> Optional[List[Any]]:
         """
         Updates fault status of stub mappings
         """
@@ -185,15 +214,18 @@ class Wiremock():
             if self.update_mapping(id, mapping):
                 ids.append(id)
             else:
-                logger.error("[populate]:ERROR updating a mapping with new fault")
+                logger.error(
+                    "[populate]:ERROR updating a mapping with new fault"
+                )
                 return None
         return ids
 
-    def update_status_code(self, mappings: Mapping[str, Any], status_code: str) -> List[Any]:
-        return self.update_status_code_and_body(mappings, status_code)
-
     def update_status_code_and_body(
-        self, mappings: Mapping[str, Any], status_code: str, body: str = None, body_file_name: str = None
+        self,
+        mappings: Mapping[str, Any],
+        status_code: str,
+        body: str = None,
+        body_file_name: str = None,
     ) -> List[Any]:
         """Populate: adds all passed mappings
         Returns the list of ids of mappings created
@@ -225,14 +257,21 @@ class Wiremock():
             if self.update_mapping(id, mapping):
                 ids.append(id)
             else:
-                logger.error("[populate]:ERROR updating a mapping with new status code")
+                logger.error(
+                    "[populate]:ERROR updating a mapping with new status code"
+                )
                 return None
         return ids
 
-    def update_mapping(self, id: str = "", mapping: Mapping[str, Any] = None) -> Dict[str, Any]:
+    def update_mapping(
+        self, id: str = "", mapping: Mapping[str, Any] = None
+    ) -> Dict[str, Any]:
         """updates the mapping pointed by id with new mapping"""
         r = requests.put(
-            "{}/{}".format(self.mappings_url, id), headers=self.headers, data=json.dumps(mapping), timeout=self.timeout
+            "{}/{}".format(self.mappings_url, id),
+            headers=self.headers,
+            data=json.dumps(mapping),
+            timeout=self.timeout,
         )
         if r.status_code != 200:
             logger.error("Error updating a mapping: " + r.text)
@@ -242,7 +281,12 @@ class Wiremock():
 
     def add_mapping(self, mapping: Mapping[str, Any]) -> int:
         """add_mapping: add a mapping passed as attribute"""
-        r = requests.post(self.mappings_url, headers=self.headers, data=json.dumps(mapping), timeout=self.timeout)
+        r = requests.post(
+            self.mappings_url,
+            headers=self.headers,
+            data=json.dumps(mapping),
+            timeout=self.timeout,
+        )
         if r.status_code != 201:
             logger.error("Error creating a mapping: " + r.text)
             return None
@@ -250,23 +294,27 @@ class Wiremock():
             res = r.json()
             return res["id"]
 
-    def delete_mapping(self):
-        r = requests.delete("{}/{}".format(self.mappings_url, id), timeout=self.timeout)
+    def delete_mapping(self, id: str):
+        r = requests.delete(f"{self.mappings_url}/{id}", timeout=self.timeout)
         if r.status_code != 200:
-            logger.error("Error deleting mapping {}: {}".format(id, r.text))
+            logger.error("Error deleting mapping %s: %s", id, r.text)
             return -1
-        else:
-            return id
+
+        return id
 
     def delete_all_mappings(self):
-        r = requests.delete("{}".format(self.mappings_url), timeout=self.timeout)
+        r = requests.delete(
+            "{}".format(self.mappings_url), timeout=self.timeout
+        )
         if r.status_code != 200:
             logger.error("Error deleting all mapping")
             return False
         else:
             return True
 
-    def fixed_delay(self, mappings: Mapping[str, Any], fixedDelayMilliseconds: int = 0) -> Dict:
+    def fixed_delay(
+        self, mappings: Mapping[str, Any], fixedDelayMilliseconds: int = 0
+    ) -> Dict:
         """
         updates the mappings adding a fixed delay
         returns the a list of updated mappings or none in case of errors
@@ -283,15 +331,22 @@ class Wiremock():
 
     def global_fixed_delay(self, fixedDelay: int) -> int:
         r = requests.post(
-            self.settings_url, headers=self.headers, data=json.dumps({"fixedDelay": fixedDelay}), timeout=self.timeout
+            self.settings_url,
+            headers=self.headers,
+            data=json.dumps({"fixedDelay": fixedDelay}),
+            timeout=self.timeout,
         )
         if r.status_code != 200:
-            logger.error("[global_fixed_delay]: Error setting delay: {}".format(r.text))
+            logger.error(
+                "[global_fixed_delay]: Error setting delay: {}".format(r.text)
+            )
             return -1
         else:
             return 1
 
-    def random_delay(self, filter: Mapping[str, Any], delayDistribution: Mapping[str, Any]) -> Dict[str, Any]:
+    def random_delay(
+        self, filter: Mapping[str, Any], delayDistribution: Mapping[str, Any]
+    ) -> Dict[str, Any]:
         """
         Updates the mapping adding a random delay
         returns the updated mapping or none in case of errors
@@ -310,7 +365,9 @@ class Wiremock():
 
     def global_random_delay(self, delayDistribution: Mapping[str, Any]) -> int:
         if not isinstance(delayDistribution, dict):
-            logger.error("[global_random_delay]: parameter has to be a dictionary")
+            logger.error(
+                "[global_random_delay]: parameter has to be a dictionary"
+            )
         r = requests.post(
             self.settings_url,
             headers=self.headers,
@@ -318,23 +375,35 @@ class Wiremock():
             timeout=self.timeout,
         )
         if r.status_code != 200:
-            logger.error("[global_random_delay]: Error setting delay: {}".format(r.text))
+            logger.error(
+                "[global_random_delay]: Error setting delay: {}".format(r.text)
+            )
             return -1
         else:
             return 1
 
-    def chunked_dribble_delay(self, filter: List[Any], chunkedDribbleDelay: Mapping[str, Any] = None):
+    def chunked_dribble_delay(
+        self, filter: List[Any], chunkedDribbleDelay: Mapping[str, Any] = None
+    ):
         """
         Adds a delay to the passed mapping
         returns the updated mapping or non in case of errors
         """
         if not isinstance(chunkedDribbleDelay, dict):
-            logger.error("[chunked_dribble_delay]: parameter has to be a dictionary")
+            logger.error(
+                "[chunked_dribble_delay]: parameter has to be a dictionary"
+            )
         if "numberOfChunks" not in chunkedDribbleDelay:
-            logger.error("[chunked_dribble_delay]: attribute numberOfChunks not " "found in parameter")
+            logger.error(
+                "[chunked_dribble_delay]: attribute numberOfChunks not "
+                "found in parameter"
+            )
             return None
         if "totalDuration" not in chunkedDribbleDelay:
-            logger.error("[chunked_dribble_delay]: attribute totalDuration not found " "in parameter")
+            logger.error(
+                "[chunked_dribble_delay]: attribute totalDuration not found "
+                "in parameter"
+            )
             return None
 
         mapping_found = self.mapping_by_request_exact_match(filter)
@@ -354,8 +423,14 @@ class Wiremock():
             if not mapping_found:
                 next
             else:
-                logger.debug("[up]: found mapping: {}".format(mapping_found["id"]))
-                for key in ["fixedDelayMilliseconds", "delayDistribution", "chunkedDribbleDelay"]:
+                logger.debug(
+                    "[up]: found mapping: {}".format(mapping_found["id"])
+                )
+                for key in [
+                    "fixedDelayMilliseconds",
+                    "delayDistribution",
+                    "chunkedDribbleDelay",
+                ]:
                     if key in mapping_found["response"]:
                         del mapping_found["response"][key]
                 self.update_mapping(mapping_found["id"], mapping_found)
@@ -363,7 +438,9 @@ class Wiremock():
         return ids
 
     def reset(self) -> int:
-        r = requests.post(self.reset_url, headers=self.headers, timeout=self.timeout)
+        r = requests.post(
+            self.reset_url, headers=self.headers, timeout=self.timeout
+        )
         if r.status_code != 200:
             logger.error("[reset]:Error resetting wiremock server " + r.text)
             return -1
@@ -371,7 +448,9 @@ class Wiremock():
             return 1
 
     def reset_mappings(self) -> int:
-        r = requests.post(self.reset_mappings_url, headers=self.headers, timeout=self.timeout)
+        r = requests.post(
+            self.reset_mappings_url, headers=self.headers, timeout=self.timeout
+        )
         if r.status_code != 200:
             logger.error("[reset]:Error resetting wiremock mappings " + r.text)
             return -1
