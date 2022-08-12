@@ -135,35 +135,111 @@ class TestWiremock(unittest.TestCase):
         self.assertTrue(isinstance(mapping, dict))
         self.assertEqual(mapping["id"], id)
 
-    # def test_mapping_by_url_and_method(self):
-    #    w = Wiremock(host="localhost", port=8080)
-    #    w.delete_all_mappings()
-    #    id = w.add_mapping(
-    #        {
-    #            "request": {"method": "GET", "url": "/some/thing/to/delete"},
-    #            "response": {
-    #                "status": 200,
-    #                "body": "Hello world!",
-    #                "headers": {"Content-Type": "text/plain"},
-    #            },
-    #        }
-    #    )
-    #    mapping = w.mapping_by_url_and_method("/some/thing/to/delete", "GET")
-    #    self.assertTrue(isinstance(mapping, dict))
-    #    self.assertEqual(mapping["id"], id)
+    def test_filter_mappings_non_strict(self):
+        w = Wiremock(host="localhost", port=8080)
+        w.delete_all_mappings()
+        id = w.add_mapping(
+            {
+                "request": {
+                    "method": "POST",
+                    "url": "/some/thing",
+                    "headers": {"Accept": {"contains": "xml"}},
+                    "bodyPatterns": [
+                        {"equalToXml": "<search-results />"},
+                        {"matchesXPath": "//search-results"},
+                    ],
+                },
+                "response": {
+                    "status": 201,
+                    "body": "Created!",
+                    "headers": {"Content-Type": "text/plain"},
+                },
+            }
+        )
 
-    # def test_mapping_by_request(self):
-    #    w = Wiremock(host="localhost", port=8080)
-    #    w.delete_all_mappings()
-    #    self.assertEqual(len(w.populate_from_dir("./tests/mappings")), 2)
-    #    #         import pdb; pdb.set_trace()
-    #    filter = {
-    #        "method": "GET",
-    #        "url": "/epg",
-    #        "queryParameters": {"episode_title": {"matches": "([a-z]*)"}},
-    #    }
-    #    mapping = w.mapping_by_request(filter)
-    #    self.assertEqual(mapping["request"], filter)
+        _filter = {"request": {"url": "/some/thing"}}
+        matched_mappings = w.filter_mappings(_filter, strict=False)
+        self.assertEqual(len(matched_mappings), 1)
+        self.assertEqual(id, matched_mappings[0]["id"])
+
+        _filter = {"request": {"headers": {"Accept": {"contains": "xml"}}}}
+        matched_mappings = w.filter_mappings(_filter, strict=False)
+        self.assertEqual(len(matched_mappings), 1)
+        self.assertEqual(id, matched_mappings[0]["id"])
+
+    def test_filter_mappings_non_strict_with_list(self):
+        w = Wiremock(host="localhost", port=8080)
+        w.delete_all_mappings()
+        id1 = w.add_mapping(
+            {
+                "request": {
+                    "method": "POST",
+                    "url": "/some/thing",
+                },
+                "response": {
+                    "status": 201,
+                    "body": "Created!",
+                    "headers": {"Content-Type": "text/plain"},
+                },
+            }
+        )
+        id2 = w.add_mapping(
+            {
+                "request": {
+                    "method": "GET",
+                    "url": "/some/other/thing",
+                },
+                "response": {
+                    "status": 200,
+                    "body": "Hello world!",
+                    "headers": {"Content-Type": "text/plain"},
+                },
+            }
+        )
+
+        _filter = {"request": {"method": ["GET", "DELETE"]}}
+        matched_mappings = w.filter_mappings(_filter, strict=False)
+        self.assertEqual(len(matched_mappings), 1)
+        self.assertEqual(id2, matched_mappings[0]["id"])
+
+        _filter = {"response": {"status": [201, 404]}}
+        matched_mappings = w.filter_mappings(_filter, strict=False)
+        self.assertEqual(len(matched_mappings), 1)
+        self.assertEqual(id1, matched_mappings[0]["id"])
+
+    def test_filter_mapping_non_strict(self):
+        w = Wiremock(host="localhost", port=8080)
+        w.delete_all_mappings()
+        w.add_mapping(
+            {
+                "request": {
+                    "method": "POST",
+                    "url": "/some/thing",
+                },
+                "response": {
+                    "status": 201,
+                    "body": "Created!",
+                    "headers": {"Content-Type": "text/plain"},
+                },
+            }
+        )
+        w.add_mapping(
+            {
+                "request": {
+                    "method": "GET",
+                    "url": "/some/other/thing",
+                },
+                "response": {
+                    "status": 200,
+                    "body": "Hello world!",
+                    "headers": {"Content-Type": "text/plain"},
+                },
+            }
+        )
+
+        _filter = {"request": {"method": ["GET", "POST"]}}
+        matched_mappings = w.filter_mappings(_filter, strict=False, limit=1)
+        self.assertEqual(len(matched_mappings), 1)
 
     def test_mapping_by_request_exact_match(self):
         w = Wiremock(host="localhost", port=8080)
